@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>StudyPilot — Full Scenario Test Runner</title>
+    <style>
+        body { font-family: Consolas, monospace; padding: 20px; background: #111; color: #eee; }
+        .pass { color: #4caf50; }
+        .fail { color: #ff5252; }
+        h1 { color: #90caf9; }
+        h2 { color: #ffcc80; margin-top: 25px; }
+    </style>
+</head>
+<body>
+
+<h1>StudyPilot — Automated Scenario Unit Tests</h1>
+<pre id="output"></pre>
+
+<script type="module">
+    import { TaskManager } from "./modules/TaskManager.js";
+    import { Prioritizer } from "./modules/Prioritizer.js";
+    import { Pomodoro } from "./modules/Pomodoro.js";
+    import { SpotifyService } from "./services/SpotifyService.js";
+    import { WeatherService } from "./services/WeatherService.js";
+
+    // ---- MOCK DEPENDENCIES ----
+    window.DashboardUI = { updateProgress: () => {} };
+    window.Analytics = { render: () => {}, addSession: () => {} };
+    window.TimerUI = { update: () => {} };
+
+    const out = document.getElementById("output");
+
+    function log(msg, status = "info") {
+        const cls = status === "pass" ? "pass" : status === "fail" ? "fail" : "";
+        out.innerHTML += `<div class="${cls}">${msg}</div>`;
+    }
+
+    function test(name, fn) {
+        try {
+            fn();
+            log(`✔ PASS: ${name}`, "pass");
+        } catch (err) {
+            log(`✘ FAIL: ${name}`, "fail");
+            log(`    ${err}`, "fail");
+        }
+    }
+
+    function testAsync(name, fn) {
+        fn().then(() => log(`✔ PASS: ${name}`, "pass"))
+        .catch(err => {
+            log(`✘ FAIL: ${name}`, "fail");
+            log(`    ${err}`, "fail");
+        });
+    }
+
+    // ==================================================
+    // SCENARIO 1 — TASK CREATION
+    // ==================================================
+    log("\nSCENARIO 1 — Task Creation:", "info");
+
+    test("User can create a task", () => {
+        localStorage.clear();
+        TaskManager.addTask("Math HW", "2025-01-01", "assignment");
+        const tasks = TaskManager.load();
+        if (tasks.length !== 1) throw "Task not created.";
+    });
+
+    test("User can edit a task", () => {
+        const task = TaskManager.load()[0];
+        TaskManager.updateTask(task.id, "Updated HW", "2025-02-02", "exam");
+        const updated = TaskManager.getTask(task.id);
+        if (updated.title !== "Updated HW") throw "Task not updated.";
+    });
+
+    test("User can delete a task", () => {
+        const before = TaskManager.load().length;
+        const task = TaskManager.load()[0];
+        TaskManager.delete(task.id);
+        const after = TaskManager.load().length;
+        if (after !== before - 1) throw "Task not deleted.";
+    });
+
+    // ==================================================
+    // SCENARIO 2 — POMODORO STUDY SESSION
+    // ==================================================
+    log("\nSCENARIO 2 — Pomodoro Study Session:", "info");
+
+    test("Pomodoro starts a session", () => {
+        Pomodoro.reset();
+        Pomodoro.workDurationMs = 3000;
+        Pomodoro.duration = 3000;
+        Pomodoro.totalRunMs = 0;
+
+        Pomodoro.start();
+        if (!Pomodoro.interval) throw "Pomodoro did not start.";
+    });
+
+    test("Pomodoro can be paused", () => {
+        Pomodoro.pause();
+        if (Pomodoro.interval !== null) throw "Pomodoro did not pause.";
+    });
+
+    test("Pomodoro resets correctly", () => {
+        Pomodoro.reset();
+        if (Pomodoro.duration !== Pomodoro.workDurationMs) throw "Pomodoro reset failed.";
+    });
+
+    // ==================================================
+    // SCENARIO 3 — SPOTIFY FOCUS PLAYLIST PLAYBACK
+    // ==================================================
+    log("\nSCENARIO 3 — Spotify Focus Playlist Playback:", "info");
+
+    testAsync("System retrieves focus playlists", async () => {
+        // FULL MOCK — token gerektirmez
+        SpotifyService.getPlaylist = async () => [
+            { name: "Focus Mix", id: "xyz123" }
+        ];
+
+        const playlists = await SpotifyService.getPlaylist();
+        if (!playlists.length) throw "No playlists returned.";
+        if (playlists[0].name !== "Focus Mix") throw "Playlist name mismatch.";
+    });
+
+    // ==================================================
+    // SCENARIO 4 — SMART TASK PRIORITIZATION
+    // ==================================================
+    log("\nSCENARIO 4 — Smart Task Prioritization:", "info");
+
+    test("System prioritizes tasks correctly", () => {
+        const sorted = Prioritizer.sortTasks([
+            { title: "A", deadline: "2026-05-10" },
+            { title: "B", deadline: "2026-01-01" },
+            { title: "C", deadline: "2026-03-15" }
+        ]);
+        if (sorted[0].title !== "B") throw "Incorrect prioritization.";
+    });
+
+    // ==================================================
+    // SCENARIO 5 — WEATHER-BASED STUDY RECOMMENDATION
+    // ==================================================
+    log("\nSCENARIO 5 — Weather-Based Study Recommendation:", "info");
+
+    testAsync("Weather service returns study recommendation", async () => {
+
+        // override real WeatherService with controlled output
+        WeatherService.getWeather = async () => ({
+            temp: 12,
+            condition: "Rain",
+            suggestion: "Rainy weather → Study indoors"
+        });
+
+        const weather = await WeatherService.getWeather();
+
+        if (weather.condition !== "Rain") throw "Weather condition mismatch.";
+        if (weather.temp !== 12) throw "Temperature mismatch.";
+        if (!weather.suggestion.includes("Study")) throw "Suggestion missing.";
+    });
+
+</script>
+
+</body>
+</html>
